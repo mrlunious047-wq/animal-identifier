@@ -1,4 +1,8 @@
-// ===== Animal Identifier JavaScript =====
+// ===== Animal Identifier JavaScript with Gemini API =====
+
+// Gemini API Configuration
+const GEMINI_API_KEY = 'AIzaSyC98hxe-BiAec3PVMQ7o1ug9KS2UOvQkfQ';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
@@ -12,7 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
 function initNavigation() {
     const navbar = document.querySelector('.navbar');
     const navLinks = document.querySelectorAll('.nav-links a');
-    const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
     
     window.addEventListener('scroll', () => {
         if (window.scrollY > 50) {
@@ -28,7 +31,6 @@ function initNavigation() {
     
     window.addEventListener('scroll', () => {
         const scrollY = window.pageYOffset;
-        
         sections.forEach(section => {
             const sectionHeight = section.offsetHeight;
             const sectionTop = section.offsetTop - 100;
@@ -50,25 +52,17 @@ function initNavigation() {
             e.preventDefault();
             const targetId = link.getAttribute('href');
             const targetSection = document.querySelector(targetId);
-            
             if (targetSection) {
-                const offsetTop = targetSection.offsetTop - 80;
                 window.scrollTo({
-                    top: offsetTop,
+                    top: targetSection.offsetTop - 80,
                     behavior: 'smooth'
                 });
             }
         });
     });
-    
-    if (mobileMenuBtn) {
-        mobileMenuBtn.addEventListener('click', () => {
-            mobileMenuBtn.classList.toggle('active');
-        });
-    }
 }
 
-// ===== File Upload =====
+// ===== File Upload & Animal Identification =====
 function initUpload() {
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
@@ -77,16 +71,24 @@ function initUpload() {
     const removeImage = document.getElementById('removeImage');
     const identifyBtn = document.getElementById('identifyBtn');
     const resultArea = document.getElementById('resultArea');
+    const loadingState = document.getElementById('loadingState');
+    const errorState = document.getElementById('errorState');
+    const tryAgainBtn = document.getElementById('tryAgainBtn');
     const uploadContent = document.querySelector('.upload-content');
+    
+    let currentImageBase64 = null;
+    let currentImageSrc = null;
     
     if (!uploadArea || !fileInput) return;
     
+    // Click to upload
     uploadArea.addEventListener('click', (e) => {
-        if (e.target !== removeImage && !e.target.closest('.remove-image')) {
+        if (!e.target.closest('.remove-image')) {
             fileInput.click();
         }
     });
     
+    // Drag and drop
     uploadArea.addEventListener('dragover', (e) => {
         e.preventDefault();
         uploadArea.classList.add('dragover');
@@ -99,10 +101,8 @@ function initUpload() {
     uploadArea.addEventListener('drop', (e) => {
         e.preventDefault();
         uploadArea.classList.remove('dragover');
-        
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            handleFile(files[0]);
+        if (e.dataTransfer.files.length > 0) {
+            handleFile(e.dataTransfer.files[0]);
         }
     });
     
@@ -120,10 +120,15 @@ function initUpload() {
         
         const reader = new FileReader();
         reader.onload = (e) => {
-            previewImage.src = e.target.result;
+            const base64Data = e.target.result;
+            currentImageSrc = base64Data;
+            previewImage.src = base64Data;
+            currentImageBase64 = base64Data.split(',')[1];
             uploadContent.style.display = 'none';
             uploadPreview.classList.add('active');
             identifyBtn.disabled = false;
+            resultArea.classList.remove('active');
+            errorState.classList.remove('active');
         };
         reader.readAsDataURL(file);
     }
@@ -131,122 +136,167 @@ function initUpload() {
     if (removeImage) {
         removeImage.addEventListener('click', (e) => {
             e.stopPropagation();
-            previewImage.src = '';
-            uploadContent.style.display = 'block';
-            uploadPreview.classList.remove('active');
-            identifyBtn.disabled = true;
-            fileInput.value = '';
-            resultArea.classList.remove('active');
+            resetUpload();
         });
+    }
+    
+    if (tryAgainBtn) {
+        tryAgainBtn.addEventListener('click', () => {
+            resetUpload();
+            errorState.classList.remove('active');
+        });
+    }
+    
+    function resetUpload() {
+        previewImage.src = '';
+        currentImageBase64 = null;
+        currentImageSrc = null;
+        uploadContent.style.display = 'block';
+        uploadPreview.classList.remove('active');
+        identifyBtn.disabled = true;
+        fileInput.value = '';
+        resultArea.classList.remove('active');
+        errorState.classList.remove('active');
     }
     
     if (identifyBtn) {
-        identifyBtn.addEventListener('click', () => {
-            identifyBtn.innerHTML = '<span class="btn-icon">⏳</span> Analyzing...';
-            identifyBtn.disabled = true;
+        identifyBtn.addEventListener('click', async () => {
+            if (!currentImageBase64) return;
             
-            setTimeout(() => {
-                showResult();
+            identifyBtn.disabled = true;
+            identifyBtn.innerHTML = '<span class="btn-icon">⏳</span> Analyzing...';
+            loadingState.classList.add('active');
+            resultArea.classList.remove('active');
+            errorState.classList.remove('active');
+            
+            try {
+                const animalData = await identifyAnimal(currentImageBase64);
+                showResult(animalData, currentImageSrc);
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message);
+            } finally {
                 identifyBtn.innerHTML = '<span class="btn-icon">🔍</span> Identify Animal';
                 identifyBtn.disabled = false;
-            }, 2000);
+                loadingState.classList.remove('active');
+            }
         });
     }
     
-    function showResult() {
-        const animals = [
-            {
-                name: 'African Lion',
-                scientific: 'Panthera leo',
-                confidence: '94%',
-                emoji: '🦁',
-                habitat: 'African Savanna',
-                diet: 'Carnivore',
-                size: '1.2m tall',
-                status: 'Vulnerable',
-                description: 'The lion is a large cat of the genus Panthera native to Africa and India. It has a muscular, broad-chested body; a short, rounded head; round ears; and a hairy tuft at the end of its tail.'
-            },
-            {
-                name: 'Red Fox',
-                scientific: 'Vulpes vulpes',
-                confidence: '96%',
-                emoji: '🦊',
-                habitat: 'Northern Hemisphere',
-                diet: 'Omnivore',
-                size: '45-90cm',
-                status: 'Least Concern',
-                description: 'The red fox is the largest of the true foxes and one of the most widely distributed members of the order Carnivora, being present across the entire Northern Hemisphere.'
-            },
-            {
-                name: 'Bengal Tiger',
-                scientific: 'Panthera tigris',
-                confidence: '91%',
-                emoji: '🐅',
-                habitat: 'Indian Subcontinent',
-                diet: 'Carnivore',
-                size: '1.1m tall',
-                status: 'Endangered',
-                description: 'The Bengal tiger is a tiger subspecies native to the Indian subcontinent. It is the most numerous tiger subspecies and accounts for about half of all wild tigers.'
-            },
-            {
-                name: 'Gray Wolf',
-                scientific: 'Canis lupus',
-                confidence: '89%',
-                emoji: '🐺',
-                habitat: 'North America, Eurasia',
-                diet: 'Carnivore',
-                size: '80-85cm tall',
-                status: 'Least Concern',
-                description: 'The wolf is a large canine native to Eurasia and North America. It is the largest extant member of the family Canidae, with males averaging 40 kg and females 37 kg.'
-            },
-            {
-                name: 'Giant Panda',
-                scientific: 'Ailuropoda melanoleuca',
-                confidence: '97%',
-                emoji: '🐼',
-                habitat: 'Central China',
-                diet: 'Herbivore',
-                size: '1.2-1.9m',
-                status: 'Vulnerable',
-                description: 'The giant panda is a bear species endemic to China. It is characterized by its bold black-and-white coat and rotund body. The name "giant panda" is sometimes used to distinguish it from the red panda.'
-            },
-            {
-                name: 'Bald Eagle',
-                scientific: 'Haliaeetus leucocephalus',
-                confidence: '95%',
-                emoji: '🦅',
-                habitat: 'North America',
-                diet: 'Carnivore',
-                size: '70-102cm',
-                status: 'Least Concern',
-                description: 'The bald eagle is a bird of prey found in North America. A sea eagle, it has two known subspecies and forms a species pair with the white-tailed eagle.'
-            }
-        ];
+    async function identifyAnimal(imageBase64) {
+        const prompt = `Analyze this image and identify the animal. Respond with ONLY a valid JSON object (no markdown, no code blocks).
+
+If there IS an animal:
+{
+    "found": true,
+    "name": "Common name",
+    "scientificName": "Scientific name",
+    "confidencePercent": 95,
+    "habitat": "Natural habitat",
+    "diet": "Diet type and details",
+    "size": "Typical size",
+    "conservationStatus": "Conservation status",
+    "description": "2-3 sentence description",
+    "funFacts": ["Fact 1", "Fact 2", "Fact 3"]
+}
+
+If NO animal found:
+{
+    "found": false,
+    "message": "What's in the image"
+}
+
+Return ONLY JSON, nothing else.`;
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inline_data: { mime_type: "image/jpeg", data: imageBase64 } }
+                    ]
+                }],
+                generationConfig: {
+                    temperature: 0.1,
+                    maxOutputTokens: 1024
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error?.message || 'API request failed');
+        }
+
+        const data = await response.json();
+        let text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         
-        const randomAnimal = animals[Math.floor(Math.random() * animals.length)];
+        if (!text) throw new Error('No response from AI');
         
-        document.getElementById('animalName').textContent = randomAnimal.name;
-        document.getElementById('scientificName').textContent = randomAnimal.scientific;
-        document.getElementById('confidenceScore').textContent = randomAnimal.confidence;
-        document.getElementById('resultImage').textContent = randomAnimal.emoji;
-        document.getElementById('habitat').textContent = randomAnimal.habitat;
-        document.getElementById('diet').textContent = randomAnimal.diet;
-        document.getElementById('size').textContent = randomAnimal.size;
-        document.getElementById('status').textContent = randomAnimal.status;
-        document.getElementById('description').textContent = randomAnimal.description;
+        // Clean markdown formatting
+        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        
+        const result = JSON.parse(text);
+        
+        if (!result.found) {
+            throw new Error(result.message || 'No animal detected in this image');
+        }
+        
+        return result;
+    }
+    
+    function showResult(data, imageSrc) {
+        document.getElementById('resultImagePreview').src = imageSrc;
+        document.getElementById('animalName').textContent = data.name || 'Unknown';
+        document.getElementById('scientificName').textContent = data.scientificName || '';
+        document.getElementById('confidenceScore').textContent = (data.confidencePercent || 90) + '%';
+        document.getElementById('habitat').textContent = data.habitat || '--';
+        document.getElementById('diet').textContent = data.diet || '--';
+        document.getElementById('size').textContent = data.size || '--';
         
         const statusEl = document.getElementById('status');
+        statusEl.textContent = data.conservationStatus || '--';
         statusEl.className = 'detail-value';
-        if (randomAnimal.status === 'Vulnerable') {
+        
+        const status = (data.conservationStatus || '').toLowerCase();
+        if (status.includes('vulnerable')) {
             statusEl.classList.add('status-vulnerable');
-        } else if (randomAnimal.status === 'Endangered') {
+        } else if (status.includes('endangered')) {
             statusEl.classList.add('status-endangered');
+        } else if (status.includes('least concern')) {
+            statusEl.classList.add('status-least-concern');
+        }
+        
+        document.getElementById('description').textContent = data.description || '';
+        
+        const funFactsList = document.getElementById('funFacts');
+        funFactsList.innerHTML = '';
+        if (data.funFacts && data.funFacts.length > 0) {
+            data.funFacts.forEach(fact => {
+                const li = document.createElement('li');
+                li.textContent = fact;
+                funFactsList.appendChild(li);
+            });
+            document.getElementById('funFactsBox').style.display = 'block';
+        } else {
+            document.getElementById('funFactsBox').style.display = 'none';
         }
         
         resultArea.classList.add('active');
         
         setTimeout(() => {
             resultArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    }
+    
+    function showError(message) {
+        document.getElementById('errorMessage').textContent = message || 'Please try with a clearer image of an animal.';
+        errorState.classList.add('active');
+        
+        setTimeout(() => {
+            errorState.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
     }
 }
@@ -257,15 +307,10 @@ function initFAQ() {
     
     faqItems.forEach(item => {
         const question = item.querySelector('.faq-question');
-        
         question.addEventListener('click', () => {
             const isActive = item.classList.contains('active');
-            
             faqItems.forEach(i => i.classList.remove('active'));
-            
-            if (!isActive) {
-                item.classList.add('active');
-            }
+            if (!isActive) item.classList.add('active');
         });
     });
 }
@@ -296,11 +341,6 @@ function initTabs() {
 
 // ===== Scroll Animations =====
 function initAnimations() {
-    const observerOptions = {
-        threshold: 0.1,
-        rootMargin: '0px 0px -50px 0px'
-    };
-    
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
@@ -308,43 +348,17 @@ function initAnimations() {
                 observer.unobserve(entry.target);
             }
         });
-    }, observerOptions);
+    }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
     
-    const animateElements = document.querySelectorAll(
-        '.feature-card, .step, .animal-tile, .faq-item, .section-header'
-    );
-    
-    animateElements.forEach((el, index) => {
+    document.querySelectorAll('.feature-card, .step, .animal-tile, .faq-item, .section-header').forEach((el, i) => {
         el.style.opacity = '0';
         el.style.transform = 'translateY(20px)';
         el.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-        el.style.transitionDelay = `${index * 0.05}s`;
+        el.style.transitionDelay = `${i * 0.05}s`;
         observer.observe(el);
     });
     
     const style = document.createElement('style');
-    style.textContent = `
-        .animate-in {
-            opacity: 1 !important;
-            transform: translateY(0) !important;
-        }
-    `;
+    style.textContent = `.animate-in { opacity: 1 !important; transform: translateY(0) !important; }`;
     document.head.appendChild(style);
 }
-
-// ===== Smooth scroll for all anchor links =====
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function(e) {
-        const href = this.getAttribute('href');
-        if (href !== '#') {
-            e.preventDefault();
-            const target = document.querySelector(href);
-            if (target) {
-                target.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }
-        }
-    });
-});
